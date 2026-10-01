@@ -40,7 +40,7 @@ select,input[type=number]{background:#1c222c;border:1px solid var(--border);colo
 .chartwrap{flex:1;position:relative;min-height:0;}
 canvas{position:absolute;inset:0;width:100%;height:100%;}
 .domcols{display:grid;grid-template-columns:44px 1fr 78px 46px 1fr 44px;background:var(--bardark);color:var(--dim);font-size:9px;text-transform:uppercase;letter-spacing:.03em;padding:5px 0;text-align:center;border-bottom:1px solid var(--border);}
-.ladder{flex:1;min-height:120px;overflow-y:auto;}
+.ladder{flex:1;min-height:120px;overflow-y:auto;position:relative;}
 .pricecell.flashbuy{background:var(--green)!important;color:#fff;transition:background .15s;}
 .pricecell.flashsell{background:var(--red)!important;color:#fff;transition:background .15s;}
 .lrow{display:grid;grid-template-columns:44px 1fr 78px 46px 1fr 44px;font-family:var(--mono);font-size:11.5px;height:22px;border-bottom:1px solid #1b2028;}
@@ -71,6 +71,9 @@ canvas{position:absolute;inset:0;width:100%;height:100%;}
 body.dragging,body.dragging *{cursor:grabbing!important;}
 .footer{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-top:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--dim);flex-wrap:wrap;gap:6px;}
 .footer button{padding:5px 10px;}
+.gotolastbar{display:flex;align-items:center;justify-content:space-between;padding:4px 10px;font-family:var(--mono);font-size:10px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+.gotolastbar button{background:transparent;color:var(--bid);font-size:10px;padding:2px 4px;text-decoration:underline;}
+.gotolastbar button:hover{color:#fff;}
 .worow{display:flex;flex-wrap:wrap;gap:6px;padding:0 10px 8px;}
 .wo{display:flex;align-items:center;gap:5px;background:#1c222c;border-radius:4px;padding:3px 6px;font-family:var(--mono);font-size:9.5px;}
 .wo button{padding:2px 5px;font-size:8px;background:#2a3140;}
@@ -90,6 +93,11 @@ body.dragging,body.dragging *{cursor:grabbing!important;}
 .modalcard p{font-size:12px;color:#333;margin:0 0 8px;}
 .modalcard label{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:#111;line-height:1.4;}
 .modalcard input[type=checkbox]{width:16px;height:16px;accent-color:var(--bid);margin-top:1px;}
+.logheader,.logrow{display:grid;grid-template-columns:72px 46px 36px 64px 64px 76px;gap:4px;font-size:11px;padding:4px 0;border-bottom:1px solid #eee;}
+.logheader{font-weight:700;color:#555;border-bottom:2px solid #ccc;}
+.logrow .pos{color:#1fae56;font-weight:700}
+.logrow .neg{color:#e0473d;font-weight:700}
+.logempty{color:#888;font-size:12px;text-align:center;padding:14px 0;}
 @media (max-width:820px){
   body{display:block;overflow:auto;height:auto}
   .wrap{flex-wrap:wrap}
@@ -102,6 +110,12 @@ body.dragging,body.dragging *{cursor:grabbing!important;}
 <body>
 <div class="appbar">
   <div class="logo">⌁ Trainer</div>
+  <select id="instrumentSel" style="background:#1c222c;border:1px solid var(--border);color:var(--text);border-radius:4px;padding:5px 8px;font-size:11px;font-family:var(--mono)">
+    <option value="ES" selected>SIM-ES (E-mini S&amp;P)</option>
+    <option value="NQ">SIM-NQ (E-mini Nasdaq)</option>
+  </select>
+  <button class="gray" id="resetBtn" style="padding:5px 10px">⟳ Reset</button>
+  <button class="gray" id="logBtn" style="padding:5px 10px">📋 Log</button>
   <div class="kv">Account<b>SIM-DEMO001</b></div>
   <div class="kv">Equity<b id="eqTop">$50,000.00</b></div>
   <div class="kv">Open P/L<b id="oplTop">0.00 USD</b></div>
@@ -110,11 +124,12 @@ body.dragging,body.dragging *{cursor:grabbing!important;}
 <div class="wrap">
   <div class="win" style="flex:1.6">
     <div class="titlebar">Trainer - Default<span class="dots">▁ ▢ ✕</span></div>
-    <div class="tabbar"><div class="tab active">SIM1 2m</div></div>
+    <div class="tabbar"><div class="tab active" id="chartTab">SIM-ES 2m</div></div>
     <div class="infobar">
       <div class="field"><label>Last</label><div class="v" id="lastPrice">5000.00</div></div>
       <div class="field"><label>Bid</label><div class="v" id="bidTxt" style="color:var(--bid)">-</div></div>
       <div class="field"><label>Ask</label><div class="v" id="askTxt" style="color:var(--ask)">-</div></div>
+      <div class="field"><label>Session</label><div class="v" id="sessTime" style="font-size:13px">09:30:00</div></div>
       <div class="field"><label>Position</label><div class="v" id="posTxt">0</div></div>
       <button class="buy" id="mktBuy1">Buy Mkt</button>
       <button class="sell" id="mktSell1">Sell Mkt</button>
@@ -129,13 +144,13 @@ body.dragging,body.dragging *{cursor:grabbing!important;}
       <span style="color:var(--dim);align-self:center">SL ticks</span>
       <input type="number" id="slTicks" style="width:60px" placeholder="off">
       <span style="color:var(--dim);align-self:center;margin-left:8px">Speed</span>
-      <select id="speedSel"><option value="0.25">0.25x</option><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option></select>
+      <select id="speedSel"><option value="0.25">0.25x</option><option value="0.5" selected>0.5x</option><option value="1">1x</option><option value="2">2x</option><option value="4">4x</option></select>
     </div>
     <div class="chartwrap"><canvas id="chart"></canvas></div>
   </div>
   <div class="win" style="flex:1;max-width:420px">
     <div class="titlebar">SuperDOM<span class="dots">▁ ▢ ✕</span></div>
-    <div class="tabbar"><div class="tab active">SIM1</div></div>
+    <div class="tabbar"><div class="tab active" id="domTab">SIM-ES</div></div>
     <div class="infobar">
       <div class="field"><label>Position</label><div class="v" id="posTxt2">0</div></div>
       <div class="field"><label>Quantity</label><select id="qty2"><option>1</option><option>2</option><option>5</option><option>10</option></select></div>
@@ -148,10 +163,10 @@ body.dragging,body.dragging *{cursor:grabbing!important;}
     <div class="btnrow" style="padding-top:0">
       <button class="gray" id="joinBid" style="flex:1;color:var(--bid)">Join Bid</button>
       <button class="gray" id="joinAsk" style="flex:1;color:var(--ask)">Join Ask</button>
-      <button class="gray" id="centerLadder" style="flex:0.5">🎯</button>
     </div>
     <div class="domcols"><div>BUY</div><div>BID</div><div>PRICE</div><div>EST.</div><div>ASK</div><div>SELL</div></div>
     <div class="ladder" id="ladder"></div>
+    <div class="gotolastbar"><span id="buyWorkTotal" style="color:var(--bid)">0</span><button id="goToLast">GO TO LAST</button><span id="sellWorkTotal" style="color:var(--ask)">0</span></div>
     <div class="worow" id="workingOrders"></div>
     <div class="footer">
       <span>SL <input type="number" id="stopPrice" placeholder="price" step="0.25" style="width:70px"></span>
@@ -163,6 +178,15 @@ body.dragging,body.dragging *{cursor:grabbing!important;}
     </div>
   </div>
 </div>
+<div class="modaloverlay" id="logModal">
+  <div class="modalcard" style="width:560px;max-width:94vw;max-height:80vh;overflow:auto">
+    <h3>Trade Log<span id="logClose">✕</span></h3>
+    <div id="logSummary" style="font-size:12px;color:#555;margin-bottom:8px">No closed trades yet</div>
+    <div class="logheader"><span>Time</span><span>Side</span><span>Qty</span><span>Entry</span><span>Exit</span><span>P&amp;L</span></div>
+    <div id="logBody"></div>
+    <button class="gray" id="logClear" style="margin-top:10px;padding:6px 10px;font-size:11px">Clear Log</button>
+  </div>
+</div>
 <div class="modaloverlay" id="domSettingsModal">
   <div class="modalcard">
     <h3>DOM Settings<span id="domSettingsClose">✕</span></h3>
@@ -171,35 +195,96 @@ body.dragging,body.dragging *{cursor:grabbing!important;}
   </div>
 </div>
 <script>
-const TICK=0.25, TICKVAL=5, ROWS=45, CANDLE_TICKS=24, START_EQ=50000;
+const ROWS=45, CANDLE_TICKS=24, START_EQ=50000;
+const INSTRUMENTS={
+  ES:{label:'SIM-ES',tick:0.25,tickval:5,basePrice:5000,vol:1},
+  NQ:{label:'SIM-NQ',tick:0.25,tickval:5,basePrice:17500,vol:2.4}
+};
+let currentInstrument='ES',TICK=INSTRUMENTS.ES.tick,TICKVAL=INSTRUMENTS.ES.tickval,instVol=INSTRUMENTS.ES.vol;
 let price=5000.00, bidSize={}, askSize={}, position={qty:0,avg:0}, realized=0, orders=[], orderSeq=1;
-let candles=[], curCandle=null, ticksIntoCandle=0, rightClickStop=true;
-let entryPrice=null,gridCenter=null, centerScrollPending=true, recentFills=[];
-function seedHistory(n){let p=price;for(let i=0;i<n;i++){const c={o:p};let h=p,l=p;for(let t=0;t<CANDLE_TICKS;t++){p=p+(Math.random()-0.5)*TICK*1.4;h=Math.max(h,p);l=Math.min(l,p);}c.h=h;c.l=l;c.c=p;candles.push(c);}price=p;}
+let candles=[], curCandle=null, ticksIntoCandle=0, rightClickStop=true, displayPrice=null;
+let entryPrice=null,gridCenter=null, centerScrollPending=true, recentFills=[], tradeLog=[];
+const SESSION_START_MIN=8*60, RTH_OPEN_MIN=9*60+30, RTH_OPEN_REL=RTH_OPEN_MIN-SESSION_START_MIN, OPEN_PHASE_LEN=15, MIN_PER_CANDLE=2, MIN_PER_TICK=MIN_PER_CANDLE/CANDLE_TICKS;
+let elapsedMin=0, regime='premarket', regimeTimer=0, discoveryDir=1;
+let vwapSumPV=0, vwapSumV=0, vwapSumPV2=0, vwap=price, vwapUp=price, vwapDn=price, vwapHistory=[];
+function fmtAxisTime(mins){
+  mins=((mins%1440)+1440)%1440;
+  let hh=Math.floor(mins/60),mm=Math.floor(mins%60);
+  const ap=hh<12?'am':'pm';let h12=hh%12;if(h12===0)h12=12;
+  return h12+':'+String(mm).padStart(2,'0')+' '+ap;
+}
+function fmtSession(){const s=Math.floor((SESSION_START_MIN+elapsedMin)*60),hh=Math.floor(s/3600)%24,mm=Math.floor(s/60)%60,ss=s%60;return String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0')+':'+String(ss).padStart(2,'0');}
+function stepPrice(){
+  elapsedMin+=MIN_PER_TICK;
+  if(elapsedMin<RTH_OPEN_REL){
+    regime='premarket';
+  }else if(elapsedMin<RTH_OPEN_REL+OPEN_PHASE_LEN){
+    if(regime!=='open'){regime='open';vwapSumPV=0;vwapSumV=0;vwapSumPV2=0;}
+  }else{
+    if(regime==='open')regime='balanced';
+    if(regime==='discovery'){
+      regimeTimer-=MIN_PER_TICK;
+      if(regimeTimer<=0)regime='balanced';
+    }else if(Math.random()<0.012){
+      regime='discovery';discoveryDir=Math.random()<0.5?-1:1;regimeTimer=0.5+Math.random()*1.5;
+    }
+  }
+  let sigma,pull=0,bias=0;
+  if(regime==='premarket'){sigma=TICK*1.4*0.55;if(Math.random()<0.03)sigma*=4;}
+  else if(regime==='open')sigma=TICK*1.4*2.2;
+  else if(regime==='discovery'){sigma=TICK*1.4*1.1;bias=discoveryDir*TICK*0.35;}
+  else{sigma=TICK*1.4*0.55;pull=0.08*(vwap-price);}
+  sigma*=instVol;bias*=instVol;
+  const micro=(Math.random()-0.5)*TICK*0.5*instVol;
+  price=price+pull+bias+(Math.random()-0.5)*sigma+micro;
+  if(regime==='premarket'){vwap=price;vwapUp=price;vwapDn=price;}
+  else{
+    const vol=1+Math.random()*5;
+    vwapSumPV+=price*vol;vwapSumV+=vol;vwapSumPV2+=vol*price*price;
+    vwap=vwapSumPV/vwapSumV;
+    const variance=Math.max(0,vwapSumPV2/vwapSumV-vwap*vwap),sd=Math.sqrt(variance);
+    vwapUp=vwap+sd;vwapDn=vwap-sd;
+  }
+}
+function seedHistory(n){for(let i=0;i<n;i++){const c={o:price,t:SESSION_START_MIN+elapsedMin};let h=price,l=price;for(let t=0;t<CANDLE_TICKS;t++){stepPrice();h=Math.max(h,price);l=Math.min(l,price);}c.h=h;c.l=l;c.c=price;candles.push(c);vwapHistory.push({v:vwap,u:vwapUp,d:vwapDn});}}
 function roundTick(p){return +(Math.round(p/TICK)*TICK).toFixed(2);}
 function getBidAsk(){const b=Math.floor(price/TICK)*TICK,a=+(b+TICK).toFixed(2);return{bid:+b.toFixed(2),ask:a};}
 function sizeFor(m,p){const k=p.toFixed(2);if(!(k in m))m[k]=5+Math.floor(Math.random()*45);return m[k];}
 function workingQtyAt(side,p){return orders.filter(o=>o.side===side&&o.price===p).reduce((s,o)=>s+o.qty,0);}
-function newCandle(){return{o:price,h:price,l:price,c:price};}
-function tickCandle(){if(!curCandle)curCandle=newCandle();curCandle.h=Math.max(curCandle.h,price);curCandle.l=Math.min(curCandle.l,price);curCandle.c=price;ticksIntoCandle++;if(ticksIntoCandle>=CANDLE_TICKS){candles.push(curCandle);if(candles.length>60)candles.shift();curCandle=newCandle();ticksIntoCandle=0;}}
+function newCandle(){return{o:price,h:price,l:price,c:price,t:SESSION_START_MIN+elapsedMin};}
+function tickCandle(){if(!curCandle)curCandle=newCandle();curCandle.h=Math.max(curCandle.h,price);curCandle.l=Math.min(curCandle.l,price);curCandle.c=price;ticksIntoCandle++;if(ticksIntoCandle>=CANDLE_TICKS){candles.push(curCandle);vwapHistory.push({v:vwap,u:vwapUp,d:vwapDn});if(candles.length>60){candles.shift();vwapHistory.shift();}curCandle=newCandle();ticksIntoCandle=0;}}
 function drawChart(){
   const cv=document.getElementById('chart'),dpr=window.devicePixelRatio||1;
   const w=cv.clientWidth,h=cv.clientHeight; cv.width=w*dpr;cv.height=h*dpr;
   const ctx=cv.getContext('2d');ctx.setTransform(1,0,0,1,0,0);ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);
-  const all=curCandle?candles.concat([curCandle]):candles; if(all.length<2)return;
-  let lo=Math.min(...all.map(c=>c.l)),hi=Math.max(...all.map(c=>c.h));
+  if(displayPrice===null)displayPrice=price;
+  const liveCandle=curCandle?Object.assign({},curCandle,{c:displayPrice,h:Math.max(curCandle.h,displayPrice),l:Math.min(curCandle.l,displayPrice)}):null;
+  const all=liveCandle?candles.concat([liveCandle]):candles; if(all.length<2)return;
+  const allV=curCandle?vwapHistory.concat([{v:vwap,u:vwapUp,d:vwapDn}]):vwapHistory;
+  let lo=Math.min(...all.map(c=>c.l),...allV.map(v=>v.d)),hi=Math.max(...all.map(c=>c.h),...allV.map(v=>v.u));
   const pad=(hi-lo)*0.15||1;lo-=pad;hi+=pad;
-  const chartW=w-54,cw=chartW/all.length,y=p=>h-((p-lo)/(hi-lo))*h;
+  const axisH=16,plotH=h-axisH,chartW=w-54,cw=chartW/all.length,y=p=>plotH-((p-lo)/(hi-lo))*plotH;
   all.forEach((c,i)=>{
     const x=i*cw+cw/2,up=c.c>=c.o;
     ctx.strokeStyle=ctx.fillStyle=up?'#1fae56':'#e0473d';ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(x,y(c.h));ctx.lineTo(x,y(c.l));ctx.stroke();
     const bt=y(Math.max(c.o,c.c)),bh=Math.max(1,Math.abs(y(c.o)-y(c.c)));
-    ctx.fillRect(x-cw*0.32,bt,cw*0.64,bh);
+    ctx.fillRect(x-cw*0.22,bt,cw*0.44,bh);
   });
-  ctx.strokeStyle='#3d97f0';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(0,y(price));ctx.lineTo(chartW,y(price));ctx.stroke();ctx.setLineDash([]);
+  const poly=(arr,getv,color,dash)=>{ctx.strokeStyle=color;ctx.lineWidth=1;ctx.setLineDash(dash||[]);ctx.beginPath();arr.forEach((pt,i)=>{const x=i*cw+cw/2,yy=y(getv(pt));i===0?ctx.moveTo(x,yy):ctx.lineTo(x,yy);});ctx.stroke();ctx.setLineDash([]);};
+  poly(allV,v=>v.u,'#2dd4bf',[4,3]);poly(allV,v=>v.d,'#2dd4bf',[4,3]);poly(allV,v=>v.v,'#f2d24a');
+  ctx.strokeStyle='#3d97f0';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(0,y(displayPrice));ctx.lineTo(chartW,y(displayPrice));ctx.stroke();ctx.setLineDash([]);
   ctx.fillStyle='#7b8595';ctx.font='10px monospace';
-  for(let i=0;i<=4;i++){const p=lo+(hi-lo)*i/4;ctx.fillText(p.toFixed(2),chartW+6,h-(h*i/4)+3);}
+  const nY=Math.max(4,Math.min(12,Math.floor(plotH/36)));
+  for(let i=0;i<=nY;i++){const p=lo+(hi-lo)*i/nY;ctx.fillText(p.toFixed(2),chartW+6,plotH-(plotH*i/nY)+3);}
+  ctx.strokeStyle='#1c232d';ctx.beginPath();ctx.moveTo(0,plotH+0.5);ctx.lineTo(chartW,plotH+0.5);ctx.stroke();
+  ctx.fillStyle='#7b8595';ctx.textAlign='center';
+  const nLabels=Math.min(6,all.length);
+  for(let k=0;k<nLabels;k++){
+    const idx=Math.round(k*(all.length-1)/(nLabels-1||1)),c=all[idx];
+    ctx.fillText(fmtAxisTime(c.t),idx*cw+cw/2,h-4);
+  }
+  ctx.textAlign='left';
 }
 function applyFill(side,qty,fp){
   recentFills.push({price:roundTick(fp),side,time:Date.now()});
@@ -210,7 +295,9 @@ function applyFill(side,qty,fp){
     position.avg=(position.avg*Math.abs(position.qty)+fp*qty)/Math.abs(nq);position.qty=nq;
   } else {
     const cq=Math.min(qty,Math.abs(position.qty)),dir=position.qty>0?1:-1;
-    realized+=((fp-position.avg)/TICK)*dir*TICKVAL*cq;
+    const pnl=((fp-position.avg)/TICK)*dir*TICKVAL*cq;
+    realized+=pnl;
+    tradeLog.push({time:fmtSession(),side:dir>0?'Long':'Short',qty:cq,entry:position.avg,exit:fp,pnl});
     let rem=qty-cq;position.qty-=dir*cq;
     if(rem>0){position.qty=side==='buy'?rem:-rem;position.avg=fp;entryPrice=roundTick(fp);}
     else if(position.qty===0){position.avg=0;entryPrice=null;cancelBracket();}
@@ -236,7 +323,7 @@ function checkFills(){
   if(closedBracket||position.qty===0)cancelBracket();
 }
 function tickMarket(){
-  price=price+(Math.random()-0.5)*TICK*1.4;
+  stepPrice();
   const {bid,ask}=getBidAsk();
   for(let i=-2;i<=2;i++){if(Math.random()<0.12)delete bidSize[(bid+i*TICK).toFixed(2)];if(Math.random()<0.12)delete askSize[(ask+i*TICK).toFixed(2)];}
   checkFills();tickCandle();render();
@@ -377,12 +464,16 @@ function render(){
   document.getElementById('lastPrice').textContent=roundTick(price).toFixed(2);
   document.getElementById('bidTxt').textContent=bid.toFixed(2);
   document.getElementById('askTxt').textContent=ask.toFixed(2);
+  document.getElementById('sessTime').textContent=fmtSession()+' EST';
+  document.getElementById('buyWorkTotal').textContent=orders.filter(o=>o.side==='buy').reduce((s,o)=>s+o.qty,0);
+  document.getElementById('sellWorkTotal').textContent=orders.filter(o=>o.side==='sell').reduce((s,o)=>s+o.qty,0);
   let unreal=0;
   if(position.qty!==0){const dir=position.qty>0?1:-1;unreal=((roundTick(price)-position.avg)/TICK)*dir*TICKVAL*Math.abs(position.qty);}
   const posStr=(position.qty>0?'+':'')+position.qty+(position.qty!==0?' @ '+position.avg.toFixed(2):'');
   document.getElementById('posTxt').textContent=posStr;document.getElementById('posTxt2').textContent=posStr;
   document.getElementById('oplTop').textContent=(unreal>=0?'':'-')+'$'+Math.abs(unreal).toFixed(2)+' USD';
   document.getElementById('realTop').textContent=(realized>=0?'':'-')+'$'+Math.abs(realized).toFixed(2)+' USD';
+  if(document.getElementById('logModal').classList.contains('show'))renderLog();
   document.getElementById('eqTop').textContent='$'+(START_EQ+realized+unreal).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   const ladder=document.getElementById('ladder');
   try{
@@ -409,10 +500,46 @@ document.getElementById('buyBid').onclick=()=>{const{bid}=getBidAsk();placeLimit
 document.getElementById('sellAsk').onclick=()=>{const{ask}=getBidAsk();placeLimit('sell',ask);};
 document.getElementById('joinBid').onclick=()=>{const{bid}=getBidAsk();placeLimit('buy',bid);};
 document.getElementById('joinAsk').onclick=()=>{const{ask}=getBidAsk();placeLimit('sell',ask);};
-document.getElementById('centerLadder').onclick=()=>{gridCenter=null;centerScrollPending=true;render();};
+document.getElementById('goToLast').onclick=()=>{gridCenter=null;centerScrollPending=true;render();};
 document.getElementById('buyStop').onclick=()=>placeStop('buy');
 document.getElementById('sellStop').onclick=()=>placeStop('sell');
 document.getElementById('qty2').onchange=e=>document.getElementById('qty').value=e.target.value;
+function renderLog(){
+  const body=document.getElementById('logBody'),sum=document.getElementById('logSummary');
+  if(!body)return;
+  if(tradeLog.length===0){body.innerHTML='<div class="logempty">No closed trades yet</div>';sum.textContent='No closed trades yet';return;}
+  const net=tradeLog.reduce((s,t)=>s+t.pnl,0),wins=tradeLog.filter(t=>t.pnl>0).length;
+  sum.textContent=tradeLog.length+' trade'+(tradeLog.length===1?'':'s')+' · Net '+(net>=0?'+':'-')+'$'+Math.abs(net).toFixed(2)+' · Win rate '+Math.round(wins/tradeLog.length*100)+'%';
+  body.innerHTML=tradeLog.slice().reverse().map(t=>'<div class="logrow"><span>'+t.time+'</span><span>'+t.side+'</span><span>'+t.qty+'</span><span>'+t.entry.toFixed(2)+'</span><span>'+t.exit.toFixed(2)+'</span><span class="'+(t.pnl>=0?'pos':'neg')+'">'+(t.pnl>=0?'+':'-')+'$'+Math.abs(t.pnl).toFixed(2)+'</span></div>').join('');
+}
+function resetSession(key){
+  const cfg=INSTRUMENTS[key||currentInstrument];
+  currentInstrument=key||currentInstrument;
+  TICK=cfg.tick;TICKVAL=cfg.tickval;instVol=cfg.vol;price=cfg.basePrice;
+  bidSize={};askSize={};position={qty:0,avg:0};realized=0;orders=[];orderSeq=1;
+  candles=[];curCandle=null;ticksIntoCandle=0;
+  entryPrice=null;gridCenter=null;centerScrollPending=true;recentFills=[];tradeLog=[];
+  elapsedMin=0;regime='premarket';regimeTimer=0;discoveryDir=1;
+  vwapSumPV=0;vwapSumV=0;vwapSumPV2=0;vwap=price;vwapUp=price;vwapDn=price;vwapHistory=[];
+  displayPrice=price;
+  document.getElementById('chartTab').textContent=cfg.label+' 2m';
+  document.getElementById('domTab').textContent=cfg.label;
+  document.getElementById('instrumentSel').value=currentInstrument;
+  renderLog();
+  seedHistory(45);
+  render();
+  toast('Session reset: '+cfg.label,'cancel');
+}
+document.getElementById('resetBtn').onclick=()=>{if(confirm('Reset session? This clears your position, orders and trade log.'))resetSession();};
+document.getElementById('instrumentSel').onchange=(e)=>{
+  const key=e.target.value;
+  if((position.qty!==0||orders.length)&&!confirm('Switching instrument resets the session, closing any position and clearing orders. Continue?')){e.target.value=currentInstrument;return;}
+  resetSession(key);
+};
+document.getElementById('logBtn').onclick=()=>{renderLog();document.getElementById('logModal').classList.add('show');};
+document.getElementById('logClose').onclick=()=>document.getElementById('logModal').classList.remove('show');
+document.getElementById('logModal').onclick=(e)=>{if(e.target.id==='logModal')e.target.classList.remove('show');};
+document.getElementById('logClear').onclick=()=>{tradeLog=[];renderLog();};
 document.getElementById('domSettingsBtn').onclick=()=>document.getElementById('domSettingsModal').classList.add('show');
 document.getElementById('domSettingsClose').onclick=()=>document.getElementById('domSettingsModal').classList.remove('show');
 document.getElementById('domSettingsModal').onclick=(e)=>{if(e.target.id==='domSettingsModal')e.target.classList.remove('show');};
@@ -420,12 +547,19 @@ document.getElementById('notifyChk').onchange=e=>notifyOn=e.target.checked;
 document.getElementById('rightClickStopChk').onchange=e=>rightClickStop=e.target.checked;
 window.addEventListener('resize',drawChart);
 document.getElementById('ladder').oncontextmenu=(e)=>e.preventDefault();
-seedHistory(40);
+seedHistory(45);
 render();
 let tickTimer=null;
 function setSpeed(x){clearInterval(tickTimer);tickTimer=setInterval(()=>tickMarket(),Math.round(150/x));}
+function animLoop(){
+  if(displayPrice===null)displayPrice=price;
+  displayPrice+=(price-displayPrice)*0.2;
+  drawChart();
+  requestAnimationFrame(animLoop);
+}
+requestAnimationFrame(animLoop);
 document.getElementById('speedSel').onchange=(e)=>setSpeed(parseFloat(e.target.value));
-setSpeed(1);
+setSpeed(0.5);
 </script>
 </body>
 </html>
