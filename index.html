@@ -205,7 +205,7 @@ let price=5000.00, bidSize={}, askSize={}, position={qty:0,avg:0}, realized=0, o
 let candles=[], curCandle=null, ticksIntoCandle=0, rightClickStop=true, displayPrice=null, crosshair=null;
 let entryPrice=null,gridCenter=null, centerScrollPending=true, recentFills=[], tradeLog=[];
 const SESSION_START_MIN=8*60, RTH_OPEN_MIN=9*60+30, RTH_OPEN_REL=RTH_OPEN_MIN-SESSION_START_MIN, OPEN_PHASE_LEN=15, MIN_PER_CANDLE=2, MIN_PER_TICK=MIN_PER_CANDLE/CANDLE_TICKS;
-let elapsedMin=0, regime='premarket', regimeTimer=0, discoveryDir=1;
+let elapsedMin=0, regime='premarket', regimeTimer=0, regimeTotal=1, discoveryDir=1;
 let vwapSumPV=0, vwapSumV=0, vwapSumPV2=0, vwap=price, vwapUp=price, vwapDn=price, vwapHistory=[];
 function fmtAxisTime(mins){
   mins=((mins%1440)+1440)%1440;
@@ -221,19 +221,27 @@ function stepPrice(){
   }else if(elapsedMin<RTH_OPEN_REL+OPEN_PHASE_LEN){
     if(regime!=='open'){regime='open';vwapSumPV=0;vwapSumV=0;vwapSumPV2=0;}
   }else{
-    if(regime==='open')regime='balanced';
+    if(regime==='open'){regime='balanced';}
     if(regime==='discovery'){
       regimeTimer-=MIN_PER_TICK;
+      if(regimeTimer<=0){regime='cooldown';regimeTimer=1.5+Math.random()*2.5;}
+    }else if(regime==='cooldown'){
+      regimeTimer-=MIN_PER_TICK;
       if(regimeTimer<=0)regime='balanced';
-    }else if(Math.random()<0.012){
-      regime='discovery';discoveryDir=Math.random()<0.5?-1:1;regimeTimer=0.5+Math.random()*1.5;
+    }else if(regime==='balanced'&&Math.random()<0.0018){
+      regime='discovery';discoveryDir=Math.random()<0.5?-1:1;regimeTimer=6+Math.random()*10;regimeTotal=regimeTimer;
     }
   }
   let sigma,pull=0,bias=0;
   if(regime==='premarket'){sigma=TICK*1.4*0.55;if(Math.random()<0.03)sigma*=4;}
   else if(regime==='open')sigma=TICK*1.4*2.2;
-  else if(regime==='discovery'){sigma=TICK*1.4*1.1;bias=discoveryDir*TICK*0.35;}
-  else{sigma=TICK*1.4*0.55;pull=0.08*(vwap-price);}
+  else if(regime==='discovery'){
+    sigma=TICK*1.4*0.85;
+    const prog=1-regimeTimer/regimeTotal,ramp=prog<0.15?prog/0.15:(prog>0.85?(1-prog)/0.15:1);
+    bias=discoveryDir*TICK*0.15*Math.max(0,Math.min(1,ramp));
+  }
+  else if(regime==='cooldown'){sigma=TICK*1.4*0.6;pull=0.01*(vwap-price);}
+  else{sigma=TICK*1.4*0.65;pull=0.012*(vwap-price);}
   sigma*=instVol;bias*=instVol;
   const micro=(Math.random()-0.5)*TICK*0.5*instVol;
   price=price+pull+bias+(Math.random()-0.5)*sigma+micro;
@@ -539,7 +547,7 @@ function resetSession(key){
   bidSize={};askSize={};position={qty:0,avg:0};realized=0;orders=[];orderSeq=1;
   candles=[];curCandle=null;ticksIntoCandle=0;
   entryPrice=null;gridCenter=null;centerScrollPending=true;recentFills=[];tradeLog=[];
-  elapsedMin=0;regime='premarket';regimeTimer=0;discoveryDir=1;
+  elapsedMin=0;regime='premarket';regimeTimer=0;regimeTotal=1;discoveryDir=1;
   vwapSumPV=0;vwapSumV=0;vwapSumPV2=0;vwap=price;vwapUp=price;vwapDn=price;vwapHistory=[];
   displayPrice=price;
   document.getElementById('chartTab').textContent=cfg.label+' 2m';
