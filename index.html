@@ -202,7 +202,7 @@ const INSTRUMENTS={
 };
 let currentInstrument='ES',TICK=INSTRUMENTS.ES.tick,TICKVAL=INSTRUMENTS.ES.tickval,instVol=INSTRUMENTS.ES.vol;
 let price=5000.00, bidSize={}, askSize={}, position={qty:0,avg:0}, realized=0, orders=[], orderSeq=1;
-let candles=[], curCandle=null, ticksIntoCandle=0, rightClickStop=true, displayPrice=null;
+let candles=[], curCandle=null, ticksIntoCandle=0, rightClickStop=true, displayPrice=null, crosshair=null;
 let entryPrice=null,gridCenter=null, centerScrollPending=true, recentFills=[], tradeLog=[];
 const SESSION_START_MIN=8*60, RTH_OPEN_MIN=9*60+30, RTH_OPEN_REL=RTH_OPEN_MIN-SESSION_START_MIN, OPEN_PHASE_LEN=15, MIN_PER_CANDLE=2, MIN_PER_TICK=MIN_PER_CANDLE/CANDLE_TICKS;
 let elapsedMin=0, regime='premarket', regimeTimer=0, discoveryDir=1;
@@ -285,6 +285,26 @@ function drawChart(){
     ctx.fillText(fmtAxisTime(c.t),idx*cw+cw/2,h-4);
   }
   ctx.textAlign='left';
+  if(crosshair&&crosshair.x>=0&&crosshair.x<=chartW&&crosshair.y>=0&&crosshair.y<=plotH){
+    ctx.strokeStyle='rgba(255,255,255,0.4)';ctx.setLineDash([2,3]);ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(0,crosshair.y);ctx.lineTo(chartW,crosshair.y);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(crosshair.x,0);ctx.lineTo(crosshair.x,plotH);ctx.stroke();
+    ctx.setLineDash([]);
+    const cp=roundTick(lo+(hi-lo)*(plotH-crosshair.y)/plotH);
+    const label=cp.toFixed(2);
+    ctx.font='11px monospace';
+    const tw=Math.max(ctx.measureText(label).width+10,50);
+    ctx.fillStyle='#f2d24a';ctx.fillRect(chartW+2,crosshair.y-8,tw,16);
+    ctx.fillStyle='#1a1a1a';ctx.textAlign='left';ctx.fillText(label,chartW+6,crosshair.y+4);
+    const idx=Math.min(all.length-1,Math.max(0,Math.round((crosshair.x-cw/2)/cw)));
+    const tlabel=fmtAxisTime(all[idx].t);
+    ctx.font='10px monospace';
+    const ttw=ctx.measureText(tlabel).width+10;
+    const tx=Math.min(Math.max(crosshair.x-ttw/2,0),chartW-ttw);
+    ctx.fillStyle='#f2d24a';ctx.fillRect(tx,plotH+1,ttw,axisH-1);
+    ctx.fillStyle='#1a1a1a';ctx.textAlign='center';ctx.fillText(tlabel,tx+ttw/2,h-4);
+    ctx.textAlign='left';
+  }
 }
 function applyFill(side,qty,fp){
   recentFills.push({price:roundTick(fp),side,time:Date.now()});
@@ -546,6 +566,11 @@ document.getElementById('domSettingsModal').onclick=(e)=>{if(e.target.id==='domS
 document.getElementById('notifyChk').onchange=e=>notifyOn=e.target.checked;
 document.getElementById('rightClickStopChk').onchange=e=>rightClickStop=e.target.checked;
 window.addEventListener('resize',drawChart);
+(function(){
+  const cv=document.getElementById('chart');
+  cv.addEventListener('mousemove',(e)=>{const r=cv.getBoundingClientRect();crosshair={x:e.clientX-r.left,y:e.clientY-r.top};});
+  cv.addEventListener('mouseleave',()=>{crosshair=null;});
+})();
 document.getElementById('ladder').oncontextmenu=(e)=>e.preventDefault();
 seedHistory(45);
 render();
