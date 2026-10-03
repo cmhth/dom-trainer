@@ -111,8 +111,8 @@ body.dragging,body.dragging *{cursor:grabbing!important;}
 <div class="appbar">
   <div class="logo">⌁ Trainer</div>
   <select id="instrumentSel" style="background:#1c222c;border:1px solid var(--border);color:var(--text);border-radius:4px;padding:5px 8px;font-size:11px;font-family:var(--mono)">
-    <option value="ES" selected>SIM-ES (E-mini S&amp;P)</option>
-    <option value="NQ">SIM-NQ (E-mini Nasdaq)</option>
+    <option value="ES">SIM-ES (E-mini S&amp;P)</option>
+    <option value="NQ" selected>SIM-NQ (E-mini Nasdaq)</option>
   </select>
   <button class="gray" id="resetBtn" style="padding:5px 10px">⟳ Reset</button>
   <button class="gray" id="logBtn" style="padding:5px 10px">📋 Log</button>
@@ -124,7 +124,7 @@ body.dragging,body.dragging *{cursor:grabbing!important;}
 <div class="wrap">
   <div class="win" style="flex:1.6">
     <div class="titlebar">Trainer - Default<span class="dots">▁ ▢ ✕</span></div>
-    <div class="tabbar"><div class="tab active" id="chartTab">SIM-ES 2m</div></div>
+    <div class="tabbar"><div class="tab active" id="chartTab">SIM-NQ 2m</div></div>
     <div class="infobar">
       <div class="field"><label>Last</label><div class="v" id="lastPrice">5000.00</div></div>
       <div class="field"><label>Bid</label><div class="v" id="bidTxt" style="color:var(--bid)">-</div></div>
@@ -150,7 +150,7 @@ body.dragging,body.dragging *{cursor:grabbing!important;}
   </div>
   <div class="win" style="flex:1;max-width:420px">
     <div class="titlebar">SuperDOM<span class="dots">▁ ▢ ✕</span></div>
-    <div class="tabbar"><div class="tab active" id="domTab">SIM-ES</div></div>
+    <div class="tabbar"><div class="tab active" id="domTab">SIM-NQ</div></div>
     <div class="infobar">
       <div class="field"><label>Position</label><div class="v" id="posTxt2">0</div></div>
       <div class="field"><label>Quantity</label><select id="qty2"><option>1</option><option>2</option><option>5</option><option>10</option></select></div>
@@ -200,8 +200,8 @@ const INSTRUMENTS={
   ES:{label:'SIM-ES',tick:0.25,tickval:5,basePrice:5000,vol:1},
   NQ:{label:'SIM-NQ',tick:0.25,tickval:5,basePrice:17500,vol:2.4}
 };
-let currentInstrument='ES',TICK=INSTRUMENTS.ES.tick,TICKVAL=INSTRUMENTS.ES.tickval,instVol=INSTRUMENTS.ES.vol;
-let price=5000.00, bidSize={}, askSize={}, position={qty:0,avg:0}, realized=0, orders=[], orderSeq=1;
+let currentInstrument='NQ',TICK=INSTRUMENTS.NQ.tick,TICKVAL=INSTRUMENTS.NQ.tickval,instVol=INSTRUMENTS.NQ.vol;
+let price=INSTRUMENTS.NQ.basePrice, bidSize={}, askSize={}, position={qty:0,avg:0}, realized=0, orders=[], orderSeq=1;
 let candles=[], curCandle=null, ticksIntoCandle=0, rightClickStop=true, displayPrice=null, crosshair=null;
 let entryPrice=null,gridCenter=null, centerScrollPending=true, recentFills=[], tradeLog=[];
 const SESSION_START_MIN=8*60, RTH_OPEN_MIN=9*60+30, RTH_OPEN_REL=RTH_OPEN_MIN-SESSION_START_MIN, OPEN_PHASE_LEN=15, MIN_PER_CANDLE=2, MIN_PER_TICK=MIN_PER_CANDLE/CANDLE_TICKS;
@@ -224,10 +224,22 @@ function stepPrice(){
     if(regime==='open'){regime='balanced';}
     if(regime==='discovery'){
       regimeTimer-=MIN_PER_TICK;
-      if(regimeTimer<=0){regime='cooldown';regimeTimer=1.5+Math.random()*2.5;}
-    }else if(regime==='cooldown'){
+      if(regimeTimer<=0){
+        if(Math.random()<0.5){regime='bounce';regimeTimer=8;}
+        else{regime='continuation';regimeTimer=6;}
+      }
+    }else if(regime==='bounce'){
       regimeTimer-=MIN_PER_TICK;
-      if(regimeTimer<=0)regime='balanced';
+      const crossed=(discoveryDir>0&&price<=vwap)||(discoveryDir<0&&price>=vwap);
+      if(crossed||regimeTimer<=0){
+        if(Math.random()<0.3){regime='discovery';discoveryDir=Math.random()<0.5?-1:1;regimeTimer=6+Math.random()*10;regimeTotal=regimeTimer;}
+        else regime='balanced';
+      }
+    }else if(regime==='continuation'){
+      regimeTimer-=MIN_PER_TICK;
+      const target=discoveryDir>0?vwapUp:vwapDn;
+      const touched=(discoveryDir>0&&price<=target)||(discoveryDir<0&&price>=target);
+      if(touched||regimeTimer<=0){regime='discovery';regimeTimer=4+Math.random()*6;regimeTotal=regimeTimer;}
     }else if(regime==='balanced'&&Math.random()<0.0018){
       regime='discovery';discoveryDir=Math.random()<0.5?-1:1;regimeTimer=6+Math.random()*10;regimeTotal=regimeTimer;
     }
@@ -240,8 +252,9 @@ function stepPrice(){
     const prog=1-regimeTimer/regimeTotal,ramp=prog<0.15?prog/0.15:(prog>0.85?(1-prog)/0.15:1);
     bias=discoveryDir*TICK*0.15*Math.max(0,Math.min(1,ramp));
   }
-  else if(regime==='cooldown'){sigma=TICK*1.4*0.6;pull=0.01*(vwap-price);}
-  else{sigma=TICK*1.4*0.65;pull=0.012*(vwap-price);}
+  else if(regime==='bounce'){sigma=TICK*1.4*0.7;pull=0.05*(vwap-price);}
+  else if(regime==='continuation'){const target=discoveryDir>0?vwapUp:vwapDn;sigma=TICK*1.4*0.6;pull=0.06*(target-price);}
+  else{const halfBand=Math.max(TICK,(vwapUp-vwapDn)/2);sigma=halfBand*0.12;pull=0.015*(vwap-price);}
   sigma*=instVol;bias*=instVol;
   const micro=(Math.random()-0.5)*TICK*0.5*instVol;
   price=price+pull+bias+(Math.random()-0.5)*sigma+micro;
@@ -284,7 +297,7 @@ function drawChart(){
   ctx.strokeStyle='#3d97f0';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(0,y(displayPrice));ctx.lineTo(chartW,y(displayPrice));ctx.stroke();ctx.setLineDash([]);
   ctx.fillStyle='#7b8595';ctx.font='10px monospace';
   const nY=Math.max(4,Math.min(12,Math.floor(plotH/36)));
-  for(let i=0;i<=nY;i++){const p=lo+(hi-lo)*i/nY;ctx.fillText(p.toFixed(2),chartW+6,plotH-(plotH*i/nY)+3);}
+  for(let i=0;i<=nY;i++){const p=lo+(hi-lo)*i/nY;ctx.fillText(roundTick(p).toFixed(2),chartW+6,plotH-(plotH*i/nY)+3);}
   ctx.strokeStyle='#1c232d';ctx.beginPath();ctx.moveTo(0,plotH+0.5);ctx.lineTo(chartW,plotH+0.5);ctx.stroke();
   ctx.fillStyle='#7b8595';ctx.textAlign='center';
   const nLabels=Math.min(6,all.length);
