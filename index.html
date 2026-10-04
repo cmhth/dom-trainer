@@ -140,9 +140,9 @@ body.dragging,body.dragging *{cursor:grabbing!important;}
       <button class="buy" id="buyBid">Buy Bid</button>
       <button class="sell" id="sellAsk">Sell Ask</button>
       <span style="color:var(--dim);align-self:center;margin-left:6px">TP ticks</span>
-      <input type="number" id="tpTicks" style="width:60px" placeholder="off">
+      <input type="number" id="tpTicks" style="width:60px" placeholder="off" min="0" title="Take profit, in ticks from your entry. Added automatically to every entry (market or limit). Blank = off.">
       <span style="color:var(--dim);align-self:center">SL ticks</span>
-      <input type="number" id="slTicks" style="width:60px" placeholder="off">
+      <input type="number" id="slTicks" style="width:60px" placeholder="off" min="0" title="Stop loss, in ticks from your entry. Added automatically to every entry (market or limit). Blank = off.">
       <span style="color:var(--dim);align-self:center;margin-left:8px">Speed</span>
       <select id="speedSel"><option value="0.25">0.25x</option><option value="0.5" selected>0.5x</option><option value="1">1x</option><option value="2">2x</option><option value="4">4x</option></select>
     </div>
@@ -328,6 +328,7 @@ function drawChart(){
   }
 }
 function applyFill(side,qty,fp){
+  const before=position.qty;
   recentFills.push({price:roundTick(fp),side,time:Date.now()});
   toast('Order filled: '+side.toUpperCase()+' '+qty+' @ '+fp.toFixed(2),'fill');
   if(position.qty===0){position.qty=side==='buy'?qty:-qty;position.avg=fp;entryPrice=roundTick(fp);}
@@ -341,27 +342,42 @@ function applyFill(side,qty,fp){
     tradeLog.push({time:fmtSession(),side:dir>0?'Long':'Short',qty:cq,entry:position.avg,exit:fp,pnl});
     let rem=qty-cq;position.qty-=dir*cq;
     if(rem>0){position.qty=side==='buy'?rem:-rem;position.avg=fp;entryPrice=roundTick(fp);}
-    else if(position.qty===0){position.avg=0;entryPrice=null;cancelBracket();}
+    else if(position.qty===0){position.avg=0;entryPrice=null;}
   }
+  if(position.qty!==0&&(Math.abs(position.qty)>Math.abs(before)||Math.sign(position.qty)!==Math.sign(before)))bracketPending=true;
 }
+let bracketPending=false;
 function cancelBracket(){orders=orders.filter(o=>o.tag!=='bracket');}
+// keep TP/SL legs matched to the live position: attach on any new entry, resize on adds/partial exits, drop when flat or flipped
+function syncBracket(){
+  const n=Math.abs(position.qty);
+  if(n===0){cancelBracket();bracketPending=false;return;}
+  const exitSide=position.qty>0?'sell':'buy';
+  orders=orders.filter(o=>o.tag!=='bracket'||o.side===exitSide);
+  const br=orders.filter(o=>o.tag==='bracket');
+  br.forEach(o=>o.qty=n);
+  if(bracketPending&&!br.length)attachBracket(position.qty>0?'buy':'sell',n,position.avg);
+  bracketPending=false;
+}
 function attachBracket(side,qty,fp){
   const tp=parseInt(document.getElementById('tpTicks').value),sl=parseInt(document.getElementById('slTicks').value);
   const exitSide=side==='buy'?'sell':'buy',dir=side==='buy'?1:-1;
-  if(!isNaN(tp)&&tp>0)orders.push({id:orderSeq++,side:exitSide,type:'limit',price:roundTick(fp+dir*tp*TICK),qty,tag:'bracket'});
-  if(!isNaN(sl)&&sl>0)orders.push({id:orderSeq++,side:exitSide,type:'stop',price:roundTick(fp-dir*sl*TICK),qty,tag:'bracket'});
+  const made=[];
+  if(!isNaN(tp)&&tp>0){const pr=roundTick(fp+dir*tp*TICK);orders.push({id:orderSeq++,side:exitSide,type:'limit',price:pr,qty,tag:'bracket'});made.push('TP '+pr.toFixed(2));}
+  if(!isNaN(sl)&&sl>0){const pr=roundTick(fp-dir*sl*TICK);orders.push({id:orderSeq++,side:exitSide,type:'stop',price:pr,qty,tag:'bracket'});made.push('SL '+pr.toFixed(2));}
+  if(made.length)toast('Bracket attached: '+made.join(' \u00b7 '),'limit');
 }
 function checkFills(){
   const {bid,ask}=getBidAsk();
-  let closedBracket=false;const rest=[];
+  const rest=[];
   orders.forEach(o=>{
     let fp=null;
     if(o.type==='limit'){if(o.side==='buy'&&ask<=o.price)fp=o.price;if(o.side==='sell'&&bid>=o.price)fp=o.price;}
     else{if(o.side==='buy'&&ask>=o.price)fp=Math.max(o.price,ask);if(o.side==='sell'&&bid<=o.price)fp=Math.min(o.price,bid);}
-    if(fp!==null){applyFill(o.side,o.qty,fp);if(o.tag==='bracket')closedBracket=true;}else rest.push(o);
+    if(fp!==null){const pend=bracketPending;applyFill(o.side,o.qty,fp);if(o.tag==='bracket')bracketPending=pend;}else rest.push(o);
   });
   orders=rest;
-  if(closedBracket||position.qty===0)cancelBracket();
+  syncBracket();
 }
 function tickMarket(){
   stepPrice();
@@ -370,7 +386,7 @@ function tickMarket(){
   checkFills();tickCandle();render();
 }
 function qtyVal(){return Math.max(1,parseInt(document.getElementById('qty').value)||1);}
-function marketOrderFor(side,qty,bracket){const {bid,ask}=getBidAsk(),fp=side==='buy'?ask:bid;applyFill(side,qty,fp);if(bracket)attachBracket(side,qty,fp);render();}
+function marketOrderFor(side,qty,bracket){const {bid,ask}=getBidAsk(),fp=side==='buy'?ask:bid;applyFill(side,qty,fp);syncBracket();render();}
 function marketOrder(side){marketOrderFor(side,qtyVal(),true);}
 function flatten(){const n=orders.length;if(position.qty!==0)marketOrderFor(position.qty>0?'sell':'buy',Math.abs(position.qty),false);orders=[];if(n)toast(n+' order'+(n>1?'s':'')+' cancelled','cancel');render();}
 let drag=null,dragScroll=null;
@@ -413,6 +429,7 @@ function moveOrders(side,from,to){
     if(o.type==='limit'&&((side==='buy'&&to>=ask)||(side==='sell'&&to<=bid))){orders=orders.filter(x=>x!==o);applyFill(side,o.qty,side==='buy'?ask:bid);}
     else{o.price=to;repriced=true;}
   });
+  syncBracket();
   if(repriced)toast('Order moved: '+side.toUpperCase()+' '+from.toFixed(2)+' \u2192 '+to.toFixed(2),grp[0].type==='stop'?'stop':'limit');
   render();
 }
@@ -423,7 +440,7 @@ document.addEventListener('mouseup',(e)=>{
   if(r){const to=+r.dataset.p;if(to!==d.from)moveOrders(d.side,d.from,to);}
 });
 function cancelAt(side,p){const n=orders.length;orders=orders.filter(o=>!(o.side===side&&o.price===p));if(orders.length<n)toast('Order cancelled: '+side.toUpperCase()+' @ '+p.toFixed(2),'cancel');render();}
-function placeLimit(side,p){const q=qtyVal(),{bid,ask}=getBidAsk();if((side==='buy'&&p>=ask)||(side==='sell'&&p<=bid)){applyFill(side,q,side==='buy'?ask:bid);render();return;}orders.push({id:orderSeq++,side,type:'limit',price:p,qty:q});toast('Limit order placed: '+side.toUpperCase()+' '+q+' @ '+p.toFixed(2),'limit');render();}
+function placeLimit(side,p){const q=qtyVal(),{bid,ask}=getBidAsk();if((side==='buy'&&p>=ask)||(side==='sell'&&p<=bid)){applyFill(side,q,side==='buy'?ask:bid);syncBracket();render();return;}orders.push({id:orderSeq++,side,type:'limit',price:p,qty:q});toast('Limit order placed: '+side.toUpperCase()+' '+q+' @ '+p.toFixed(2),'limit');render();}
 let notifyOn=true;
 function toast(msg,type){
   type=type||'reject';
